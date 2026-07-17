@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -74,7 +75,7 @@ type ReportConfig struct {
 // Load อ่าน .env เข้า environment ก่อน แล้วอ่าน yaml (แทน ${VAR} ด้วยค่าจาก env)
 func Load(path string) (*Config, error) {
 	// โหลด .env เข้า environment (ไม่ error ถ้าไม่มีไฟล์ — prod อาจตั้ง env ตรงๆ)
-	_ = godotenv.Load()
+	loadDotEnv()
 
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -95,4 +96,26 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	return &cfg, nil
+}
+
+// loadDotEnv หา .env จาก cwd แล้วไล่ขึ้น parent จนเจอ (รองรับรันจาก subdir/worktree)
+// ไม่เจอก็ไม่เป็นไร — prod อาจตั้ง env variable ตรงๆ
+func loadDotEnv() {
+	dir, err := os.Getwd()
+	if err != nil {
+		_ = godotenv.Load()
+		return
+	}
+	for {
+		p := filepath.Join(dir, ".env")
+		if _, err := os.Stat(p); err == nil {
+			_ = godotenv.Load(p)
+			return
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir { // ถึง root แล้วไม่เจอ
+			return
+		}
+		dir = parent
+	}
 }
