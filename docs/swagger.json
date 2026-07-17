@@ -1,0 +1,181 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "API สำหรับส่ง SMS / FCM / Email notification (RabbitMQ + Azure SQL)",
+        "title": "Service Notification API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "host": "localhost:8080",
+    "basePath": "/",
+    "paths": {
+        "/health": {
+            "get": {
+                "description": "เช็คว่า service พร้อมทำงาน",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/test-send": {
+            "post": {
+                "description": "demo ชั่วคราว — พิสูจน์ว่า Sender interface ทำงาน (ยังไม่ผ่าน DB/queue)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "ทดสอบส่งผ่าน mock sender",
+                "parameters": [
+                    {
+                        "description": "payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.TestSendRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.TestSendResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "domain.ErrorType": {
+            "type": "integer",
+            "enum": [
+                0,
+                1
+            ],
+            "x-enum-comments": {
+                "ErrorPermanent": "เบอร์ผิด/token invalid -\u003e ไม่ต้อง retry",
+                "ErrorTemporary": "network/timeout/rate limit -\u003e retry"
+            },
+            "x-enum-descriptions": [
+                "network/timeout/rate limit -\u003e retry",
+                "เบอร์ผิด/token invalid -\u003e ไม่ต้อง retry"
+            ],
+            "x-enum-varnames": [
+                "ErrorTemporary",
+                "ErrorPermanent"
+            ]
+        },
+        "domain.Result": {
+            "type": "object",
+            "properties": {
+                "err": {
+                    "description": "nil = สำเร็จ",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.SendError"
+                        }
+                    ]
+                },
+                "notificationID": {
+                    "type": "string"
+                },
+                "providerMessageID": {
+                    "description": "id ที่ provider คืนมา (เก็บไว้ map DLR)",
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SendError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/domain.ErrorType"
+                }
+            }
+        },
+        "handler.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "env": {
+                    "type": "string",
+                    "example": "local"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        },
+        "handler.TestSendRequest": {
+            "type": "object",
+            "required": [
+                "body",
+                "recipient"
+            ],
+            "properties": {
+                "body": {
+                    "type": "string",
+                    "example": "ทดสอบส่ง"
+                },
+                "recipient": {
+                    "type": "string",
+                    "example": "0861234567"
+                }
+            }
+        },
+        "handler.TestSendResponse": {
+            "type": "object",
+            "properties": {
+                "channel": {
+                    "type": "string",
+                    "example": "sms"
+                },
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Result"
+                    }
+                }
+            }
+        }
+    }
+}
