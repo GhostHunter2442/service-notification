@@ -10,8 +10,6 @@ import (
 	"github.com/GhostHunter2442/service-notification/internal/api"
 	"github.com/GhostHunter2442/service-notification/internal/api/handler"
 	"github.com/GhostHunter2442/service-notification/internal/config"
-	"github.com/GhostHunter2442/service-notification/internal/domain"
-	"github.com/GhostHunter2442/service-notification/internal/sender/sms"
 	"github.com/GhostHunter2442/service-notification/pkg/logger"
 )
 
@@ -39,10 +37,7 @@ func main() {
 		Str("sms_provider", cfg.SMS.Provider).
 		Msg("starting api server")
 
-	// เลือก SMS sender ตาม config (ตอนนี้มีแค่ mock)
-	var smsSender domain.Sender = sms.NewMockSender()
-
-	h := handler.New(cfg.App.Env, smsSender)
+	h := handler.New(cfg.App.Env, cfg.SMS)
 	r := api.NewRouter(h)
 
 	addr := fmt.Sprintf(":%d", cfg.App.HTTPPort)

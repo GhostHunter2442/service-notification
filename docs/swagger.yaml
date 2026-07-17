@@ -51,15 +51,25 @@ definitions:
     type: object
   handler.TestSendRequest:
     properties:
-      body:
-        example: ทดสอบส่ง
+      message:
+        description: เนื้อความ
+        example: ทดสอบ sms
         type: string
-      recipient:
-        example: "0861234567"
+      numbers:
+        description: เบอร์ปลายทาง
+        example:
+        - "0806906003"
+        items:
+          type: string
+        minItems: 1
+        type: array
+      source:
+        description: ว่างได้ = ใช้ค่าจาก config
+        example: easymoney
         type: string
     required:
-    - body
-    - recipient
+    - message
+    - numbers
     type: object
   handler.TestSendResponse:
     properties:
@@ -95,7 +105,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: demo ชั่วคราว — พิสูจน์ว่า Sender interface ทำงาน (ยังไม่ผ่าน DB/queue)
+      description: ยิง SMS จริงผ่าน easymoney adapter (ยังไม่ผ่าน DB/queue) — คืน
+        message_id ที่ provider ตอบกลับ
       parameters:
       - description: payload
         in: body
@@ -114,7 +125,7 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
-      summary: ทดสอบส่งผ่าน mock sender
+      summary: ทดสอบส่ง SMS ผ่าน easymoney
       tags:
       - notifications
 swagger: "2.0"

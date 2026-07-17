@@ -24,6 +24,13 @@ const (
 	ErrorPermanent                  // เบอร์ผิด/token invalid -> ไม่ต้อง retry
 )
 
+func (t ErrorType) String() string {
+	if t == ErrorPermanent {
+		return "permanent"
+	}
+	return "temporary"
+}
+
 // SendError = error กลาง — worker ตัดสินใจ retry จากตรงนี้ ไม่ต้องรู้จัก provider
 type SendError struct {
 	Type    ErrorType

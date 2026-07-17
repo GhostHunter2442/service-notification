@@ -44,6 +44,8 @@ type RabbitMQConfig struct {
 
 type SMSConfig struct {
 	Provider      string `mapstructure:"provider"`
+	Source        string `mapstructure:"source"`   // ชื่อผู้ส่งที่แนบไป payload (easymoney)
+	Endpoint      string `mapstructure:"endpoint"` // URL ของ provider (ว่าง = ใช้ default ของ adapter)
 	RatePerSecond int    `mapstructure:"rate_per_second"`
 	MaxConcurrent int    `mapstructure:"max_concurrent"`
 	BatchSize     int    `mapstructure:"batch_size"`
