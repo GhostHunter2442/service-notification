@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/GhostHunter2442/service-notification/internal/domain"
 )
 
@@ -22,38 +24,58 @@ func New(sender domain.Sender, repo domain.NotificationRepository) *Notification
 	return &Notification{sender: sender, repo: repo}
 }
 
-// SendSMS บันทึกสถานะ pending → ยิงผ่าน sender → อัปเดตผลตาม result
-// คืน result รายข้อความให้ชั้นบนเอาไปแสดง
-func (s *Notification) SendSMS(ctx context.Context, msgs []domain.Message) ([]domain.Result, error) {
-	now := time.Now()
+// SendSMS สร้าง batch → บันทึก notifications (pending) → ยิงผ่าน sender
+// → อัปเดตผลรายแถว → ปิด batch พร้อม counter สรุป
+func (s *Notification) SendSMS(ctx context.Context, batchName string, msgs []domain.Message) ([]domain.Result, error) {
+	now := time.Now().UTC()
+	channel := s.sender.Channel()
 
-	// 1) สร้าง record สถานะ pending
+	// 1) สร้าง batch (ต้องมีก่อน notifications เพราะ FK)
+	batch := domain.Batch{
+		ID:           uuid.NewString(),
+		Name:         batchName,
+		Channel:      channel,
+		Total:        len(msgs),
+		PendingCount: len(msgs),
+		Status:       domain.BatchProcessing,
+		CreatedAt:    now,
+	}
+	if err := s.repo.CreateBatch(ctx, batch); err != nil {
+		return nil, fmt.Errorf("create batch: %w", err)
+	}
+
+	// 2) สร้าง notification (pending) — gen GUID id ให้แต่ละแถว
 	notifs := make([]domain.Notification, len(msgs))
 	idx := make(map[string]int, len(msgs))
-	for i, m := range msgs {
+	for i := range msgs {
+		if msgs[i].NotificationID == "" {
+			msgs[i].NotificationID = uuid.NewString()
+		}
 		notifs[i] = domain.Notification{
-			ID:        m.NotificationID,
-			Recipient: m.Recipient,
-			Channel:   s.sender.Channel(),
-			Payload:   m.Payload,
+			ID:        msgs[i].NotificationID,
+			BatchID:   batch.ID,
+			Recipient: msgs[i].Recipient,
+			Channel:   channel,
+			Payload:   msgs[i].Payload,
 			Status:    domain.StatusPending,
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		idx[m.NotificationID] = i
+		idx[msgs[i].NotificationID] = i
 	}
-	if err := s.repo.SaveAll(ctx, notifs); err != nil {
-		return nil, fmt.Errorf("save pending: %w", err)
+	if err := s.repo.CreateNotifications(ctx, notifs); err != nil {
+		return nil, fmt.Errorf("create notifications: %w", err)
 	}
 
-	// 2) ยิงผ่าน sender
+	// 3) ยิงผ่าน sender
 	results, err := s.sender.Send(ctx, msgs)
 	if err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
 
-	// 3) อัปเดตสถานะตามผล (accepted=sent / error=failed) แล้ว upsert อีกครั้ง
-	updatedAt := time.Now()
+	// 4) อัปเดตสถานะตามผล (accepted=sent / error=failed) + นับ counter
+	updatedAt := time.Now().UTC()
+	var sent, failed int
 	for _, r := range results {
 		i, ok := idx[r.NotificationID]
 		if !ok {
@@ -66,13 +88,25 @@ func (s *Notification) SendSMS(ctx context.Context, msgs []domain.Message) ([]do
 			n.Status = domain.StatusFailed
 			n.ErrorCode = r.Err.Code
 			n.ErrorMessage = r.Err.Message
+			failed++
 		} else {
 			n.Status = domain.StatusSent
 			n.SentAt = &updatedAt
+			sent++
 		}
 	}
-	if err := s.repo.SaveAll(ctx, notifs); err != nil {
-		return results, fmt.Errorf("save results: %w", err)
+	if err := s.repo.UpdateNotificationResults(ctx, notifs); err != nil {
+		return results, fmt.Errorf("update notifications: %w", err)
+	}
+
+	// 5) ปิด batch พร้อม counter สรุป
+	batch.SentCount = sent
+	batch.FailedCount = failed
+	batch.PendingCount = 0
+	batch.Status = domain.BatchCompleted
+	batch.CompletedAt = &updatedAt
+	if err := s.repo.UpdateBatch(ctx, batch); err != nil {
+		return results, fmt.Errorf("update batch: %w", err)
 	}
 
 	return results, nil

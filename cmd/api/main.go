@@ -40,9 +40,16 @@ func main() {
 		Str("sms_provider", cfg.SMS.Provider).
 		Msg("starting api server")
 
+	// เปิด connection ไป Azure SQL
+	db, err := repository.Open(cfg.Database)
+	if err != nil {
+		log.Fatal().Err(err).Msg("connect database")
+	}
+	defer db.Close()
+
 	// wire dependency: sender + repository -> service -> handler
 	smsSender := sms.NewHTTPSender(cfg.SMS.Source, cfg.SMS.Endpoint)
-	repo := repository.NewMemory() // TODO: เปลี่ยนเป็น Azure SQL repo
+	repo := repository.NewSQLServer(db)
 	svc := service.New(smsSender, repo)
 
 	h := handler.New(cfg.App.Env, svc)

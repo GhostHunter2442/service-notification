@@ -74,17 +74,16 @@ func (h *Handler) TestSend(c *gin.Context) {
 		return
 	}
 
-	// numbers ทุกเบอร์ใช้ body เดียวกัน → adapter จะ group เป็น 1 call
+	// numbers ทุกเบอร์ใช้ body เดียวกัน (service gen id + adapter group เป็น 1 call)
 	msgs := make([]domain.Message, len(req.Numbers))
 	for i, n := range req.Numbers {
 		msgs[i] = domain.Message{
-			NotificationID: "test-" + n,
-			Recipient:      n,
-			Payload:        domain.Payload{Body: req.Message},
+			Recipient: n,
+			Payload:   domain.Payload{Body: req.Message},
 		}
 	}
 
-	results, err := h.svc.SendSMS(c.Request.Context(), msgs)
+	results, err := h.svc.SendSMS(c.Request.Context(), "test-send", msgs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
