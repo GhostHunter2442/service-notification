@@ -16,9 +16,9 @@ rabbitmq:
   exchange: notification
 
 sms:
-  provider: mock            # mock | easymoney | twilio | vonage ...
-  source: easymoney         # ชื่อผู้ส่ง (ใช้เมื่อ provider = easymoney)
-  endpoint: ""              # ว่าง = ใช้ default endpoint ของ adapter
+  provider: http            # http (ยิงผ่าน HTTP API) | mock
+  source: easymoney         # ชื่อผู้ส่งที่แนบไป payload
+  endpoint: ${SMS_ENDPOINT} # URL ปลายทาง — ดึงจาก .env ไม่ hardcode
   rate_per_second: 100      # ปรับตาม provider จริง
   max_concurrent: 50
   batch_size: 1

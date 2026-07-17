@@ -79,7 +79,7 @@ func (h *Handler) TestSend(c *gin.Context) {
 	if source == "" {
 		source = h.smsCfg.Source
 	}
-	sender := sms.NewEasyMoneySender(source, sms.WithEasyMoneyEndpoint(h.smsCfg.Endpoint))
+	sender := sms.NewHTTPSender(source, h.smsCfg.Endpoint)
 
 	// numbers ทุกเบอร์ใช้ body เดียวกัน → adapter จะ group เป็น 1 call
 	msgs := make([]domain.Message, len(req.Numbers))

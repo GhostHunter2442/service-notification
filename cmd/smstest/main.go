@@ -37,7 +37,7 @@ func main() {
 		message = os.Args[2]
 	}
 
-	sender := sms.NewEasyMoneySender(cfg.SMS.Source, sms.WithEasyMoneyEndpoint(cfg.SMS.Endpoint))
+	sender := sms.NewHTTPSender(cfg.SMS.Source, cfg.SMS.Endpoint)
 
 	fmt.Printf("source  : %s\n", cfg.SMS.Source)
 	fmt.Printf("number  : %s\n", number)

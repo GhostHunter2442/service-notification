@@ -12,39 +12,35 @@ import (
 	"github.com/GhostHunter2442/service-notification/internal/domain"
 )
 
-// easyMoneyDefaultEndpoint = endpoint ส่ง SMS ของ easymoney
-const easyMoneyDefaultEndpoint = "https://easymoneydev.com/services/sms/sendMessage"
-
-// EasyMoneySender = adapter ส่ง SMS ผ่าน HTTP API ของ easymoney
-// API รับ 1 ข้อความ ยิงเข้าหลายเบอร์ในครั้งเดียว (payload: source/message/numbers[])
-// จึง group message ที่ body เหมือนกันเป็น call เดียว ลดจำนวน request ตอนส่งหลายหมื่น
-type EasyMoneySender struct {
+// HTTPSender = SMS sender กลางที่ยิงผ่าน HTTP JSON API
+// endpoint/source มาจาก config (ตั้งใน .env) — ไม่ผูกกับ provider เจ้าใดเจ้าหนึ่ง
+// contract: POST {source, message, numbers[]} → {success, task_id, message_id}
+// API รับ 1 ข้อความยิงหลายเบอร์ในครั้งเดียว จึง group message ที่ body เหมือนกัน
+// เป็น call เดียว ลดจำนวน request ตอนส่งหลายหมื่น
+type HTTPSender struct {
 	endpoint string
 	source   string
 	http     *http.Client
 }
 
-// EasyMoneyOption ปรับแต่งค่าของ EasyMoneySender
-type EasyMoneyOption func(*EasyMoneySender)
+// HTTPOption ปรับแต่งค่าของ HTTPSender
+type HTTPOption func(*HTTPSender)
 
-// WithEasyMoneyEndpoint กำหนด endpoint เอง (เช่น ชี้ไป staging)
-func WithEasyMoneyEndpoint(url string) EasyMoneyOption {
-	return func(s *EasyMoneySender) {
-		if url != "" {
-			s.endpoint = url
+// WithHTTPClient ใส่ *http.Client เอง (กำหนด timeout/transport เอง)
+func WithHTTPClient(hc *http.Client) HTTPOption {
+	return func(s *HTTPSender) {
+		if hc != nil {
+			s.http = hc
 		}
 	}
 }
 
-// WithEasyMoneyHTTPClient ใส่ *http.Client เอง (กำหนด timeout/transport เอง)
-func WithEasyMoneyHTTPClient(hc *http.Client) EasyMoneyOption {
-	return func(s *EasyMoneySender) { s.http = hc }
-}
-
-// NewEasyMoneySender สร้าง sender โดย source = ชื่อผู้ส่งที่แนบไปกับ payload
-func NewEasyMoneySender(source string, opts ...EasyMoneyOption) *EasyMoneySender {
-	s := &EasyMoneySender{
-		endpoint: easyMoneyDefaultEndpoint,
+// NewHTTPSender สร้าง sender โดย
+//   - source   = ชื่อผู้ส่งที่แนบไปกับ payload
+//   - endpoint = URL ปลายทาง (มาจาก config/.env ห้าม hardcode)
+func NewHTTPSender(source, endpoint string, opts ...HTTPOption) *HTTPSender {
+	s := &HTTPSender{
+		endpoint: endpoint,
 		source:   source,
 		http:     &http.Client{Timeout: 15 * time.Second},
 	}
@@ -55,20 +51,20 @@ func NewEasyMoneySender(source string, opts ...EasyMoneyOption) *EasyMoneySender
 }
 
 // Channel บอกว่าเป็นช่องทาง SMS
-func (s *EasyMoneySender) Channel() domain.Channel {
+func (s *HTTPSender) Channel() domain.Channel {
 	return domain.ChannelSMS
 }
 
-// easyMoneyRequest = payload ที่ส่งไปยัง API
-type easyMoneyRequest struct {
+// sendRequest = payload ที่ส่งไปยัง API
+type sendRequest struct {
 	Source  string   `json:"source"`
 	Message string   `json:"message"`
 	Numbers []string `json:"numbers"`
 }
 
-// easyMoneyResponse = ผลตอบกลับต่อ 1 call (ระดับ task ไม่ใช่รายเบอร์)
+// sendResponse = ผลตอบกลับต่อ 1 call (ระดับ task ไม่ใช่รายเบอร์)
 // เช่น {"success":true,"task_id":"255837653","message_id":"381230037"}
-type easyMoneyResponse struct {
+type sendResponse struct {
 	Success   bool   `json:"success"`
 	TaskID    string `json:"task_id"`
 	MessageID string `json:"message_id"`
@@ -79,10 +75,13 @@ type easyMoneyResponse struct {
 
 // Send ยิงหลายข้อความ — group ตาม body แล้วส่ง 1 call ต่อ 1 body
 // per-message error ใส่ใน Result.Err (worker ตัดสิน retry จากตรงนั้น)
-// คืน top-level error เฉพาะกรณีที่ระบบพังทั้งชุด (ไม่มี message ให้ส่ง)
-func (s *EasyMoneySender) Send(ctx context.Context, msgs []domain.Message) ([]domain.Result, error) {
+// คืน top-level error เฉพาะกรณี config/ระบบพังทั้งชุด (endpoint ว่าง / ไม่มี message)
+func (s *HTTPSender) Send(ctx context.Context, msgs []domain.Message) ([]domain.Result, error) {
+	if s.endpoint == "" {
+		return nil, fmt.Errorf("sms: ยังไม่ได้ตั้ง endpoint (ตั้ง SMS_ENDPOINT ใน .env)")
+	}
 	if len(msgs) == 0 {
-		return nil, fmt.Errorf("easymoney: ไม่มี message ให้ส่ง")
+		return nil, fmt.Errorf("sms: ไม่มี message ให้ส่ง")
 	}
 
 	// group index ของ message ตาม body ที่เหมือนกัน
@@ -121,9 +120,9 @@ func (s *EasyMoneySender) Send(ctx context.Context, msgs []domain.Message) ([]do
 }
 
 // sendGroup ยิง 1 request (1 body หลายเบอร์)
-// คืน (message_id, nil) = สำเร็จ / (\"\", err) = ล้มเหลว
-func (s *EasyMoneySender) sendGroup(ctx context.Context, message string, numbers []string) (string, *domain.SendError) {
-	payload, err := json.Marshal(easyMoneyRequest{
+// คืน (message_id, nil) = สำเร็จ / ("", err) = ล้มเหลว
+func (s *HTTPSender) sendGroup(ctx context.Context, message string, numbers []string) (string, *domain.SendError) {
+	payload, err := json.Marshal(sendRequest{
 		Source:  s.source,
 		Message: message,
 		Numbers: numbers,
@@ -157,10 +156,10 @@ func (s *EasyMoneySender) sendGroup(ctx context.Context, message string, numbers
 	}
 
 	// 2xx: parse body — {"success":true,"task_id":"...","message_id":"..."}
-	var body easyMoneyResponse
+	var body sendResponse
 	if err := json.Unmarshal(respBody, &body); err != nil {
 		// provider รับแล้ว (2xx) แต่ body ไม่ใช่ JSON ที่คาด → ถือว่ารับ แต่ไม่มี message_id
-		// (ไม่ flip เป็น error เพราะ provider accept แล้ว) — log ให้เห็น response ดิบ
+		// (ไม่ flip เป็น error เพราะ provider accept แล้ว)
 		return "", nil
 	}
 

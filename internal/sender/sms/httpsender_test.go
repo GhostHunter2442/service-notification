@@ -13,12 +13,12 @@ import (
 
 // captureServer คืน test server + ตัวเก็บ payload ที่ถูกยิงเข้ามา
 // respBody = body ที่ server จะตอบกลับ (ปล่อยว่างได้สำหรับเคส error status)
-func captureServer(t *testing.T, status int, respBody string) (*httptest.Server, *[]easyMoneyRequest) {
+func captureServer(t *testing.T, status int, respBody string) (*httptest.Server, *[]sendRequest) {
 	t.Helper()
-	var got []easyMoneyRequest
+	var got []sendRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		var req easyMoneyRequest
+		var req sendRequest
 		if err := json.Unmarshal(body, &req); err != nil {
 			t.Errorf("payload ไม่ใช่ JSON ที่คาด: %v", err)
 		}
@@ -34,9 +34,9 @@ func captureServer(t *testing.T, status int, respBody string) (*httptest.Server,
 
 const okResponse = `{"success":true,"task_id":"255837653","message_id":"381230037"}`
 
-func TestEasyMoneySend_Success(t *testing.T) {
+func TestHTTPSender_Success(t *testing.T) {
 	srv, got := captureServer(t, http.StatusOK, okResponse)
-	sender := NewEasyMoneySender("easymoney", WithEasyMoneyEndpoint(srv.URL))
+	sender := NewHTTPSender("easymoney", srv.URL)
 
 	results, err := sender.Send(context.Background(), []domain.Message{
 		{NotificationID: "1", Recipient: "0801111111", Payload: domain.Payload{Body: "hello"}},
@@ -68,10 +68,10 @@ func TestEasyMoneySend_Success(t *testing.T) {
 	}
 }
 
-func TestEasyMoneySend_ProviderRejected(t *testing.T) {
+func TestHTTPSender_ProviderRejected(t *testing.T) {
 	// HTTP 200 แต่ success:false → ต้องเป็น error ถาวร
 	srv, _ := captureServer(t, http.StatusOK, `{"success":false,"error":"invalid number"}`)
-	sender := NewEasyMoneySender("easymoney", WithEasyMoneyEndpoint(srv.URL))
+	sender := NewHTTPSender("easymoney", srv.URL)
 
 	results, err := sender.Send(context.Background(), []domain.Message{
 		{NotificationID: "1", Recipient: "bad", Payload: domain.Payload{Body: "x"}},
@@ -87,9 +87,9 @@ func TestEasyMoneySend_ProviderRejected(t *testing.T) {
 	}
 }
 
-func TestEasyMoneySend_GroupsByBody(t *testing.T) {
+func TestHTTPSender_GroupsByBody(t *testing.T) {
 	srv, got := captureServer(t, http.StatusOK, okResponse)
-	sender := NewEasyMoneySender("easymoney", WithEasyMoneyEndpoint(srv.URL))
+	sender := NewHTTPSender("easymoney", srv.URL)
 
 	_, err := sender.Send(context.Background(), []domain.Message{
 		{NotificationID: "1", Recipient: "0801111111", Payload: domain.Payload{Body: "A"}},
@@ -105,7 +105,7 @@ func TestEasyMoneySend_GroupsByBody(t *testing.T) {
 	}
 }
 
-func TestEasyMoneySend_ErrorClassification(t *testing.T) {
+func TestHTTPSender_ErrorClassification(t *testing.T) {
 	cases := []struct {
 		status int
 		want   domain.ErrorType
@@ -117,7 +117,7 @@ func TestEasyMoneySend_ErrorClassification(t *testing.T) {
 	}
 	for _, tc := range cases {
 		srv, _ := captureServer(t, tc.status, "")
-		sender := NewEasyMoneySender("easymoney", WithEasyMoneyEndpoint(srv.URL))
+		sender := NewHTTPSender("easymoney", srv.URL)
 		results, err := sender.Send(context.Background(), []domain.Message{
 			{NotificationID: "1", Recipient: "0801111111", Payload: domain.Payload{Body: "x"}},
 		})
@@ -130,5 +130,16 @@ func TestEasyMoneySend_ErrorClassification(t *testing.T) {
 		if results[0].Err.Type != tc.want {
 			t.Errorf("status %d: คาด %v, ได้ %v", tc.status, tc.want, results[0].Err.Type)
 		}
+	}
+}
+
+func TestHTTPSender_EmptyEndpoint(t *testing.T) {
+	// endpoint ว่าง → top-level error (config ผิด)
+	sender := NewHTTPSender("easymoney", "")
+	_, err := sender.Send(context.Background(), []domain.Message{
+		{NotificationID: "1", Recipient: "0801111111", Payload: domain.Payload{Body: "x"}},
+	})
+	if err == nil {
+		t.Fatal("endpoint ว่าง ต้องได้ error")
 	}
 }
