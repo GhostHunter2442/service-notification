@@ -1,0 +1,13 @@
+# secrets & env
+.env
+!.env.example
+secrets/
+*.local.yaml
+
+# build
+/bin/
+/tmp/
+*.exe
+
+# go
+vendor/

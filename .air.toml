@@ -1,0 +1,17 @@
+# air config — hot reload ตอน dev (รัน: air)
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # build entrypoint api (ไม่ใช่ root — main อยู่ที่ cmd/api)
+  cmd = "go build -o ./tmp/main.exe ./cmd/api"
+  bin = "./tmp/main.exe"
+  # ไฟล์ที่แก้แล้วให้ rebuild
+  include_ext = ["go", "yaml", "yml", "tmpl", "html"]
+  # ไม่ต้อง watch โฟลเดอร์พวกนี้ (กัน rebuild วนไม่จบ)
+  exclude_dir = ["tmp", "vendor", "docs", ".git", "migrations"]
+  delay = 1000
+  stop_on_error = true
+
+[misc]
+  clean_on_exit = true

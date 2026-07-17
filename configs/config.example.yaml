@@ -1,0 +1,40 @@
+app:
+  env: local
+  http_port: 8080
+
+database:
+  driver: sqlserver                              # Azure SQL (SQL Server)
+  host: pawnshop-dev.database.windows.net    # FQDN ของ Azure SQL (ดูใน Azure Portal)
+  port: 1433                                     # SQL Server ใช้ 1433
+  user: ${DB_USER}                               # ดึงจาก .env — ไม่ hardcode
+  password: ${DB_PASSWORD}                       # ดึงจาก .env — ห้ามใส่ตรงๆ
+  name: pawnshop
+  encrypt: true                                  # Azure บังคับเข้ารหัสการเชื่อมต่อ
+
+rabbitmq:
+  url: amqp://guest:guest@localhost:5672/
+  exchange: notification
+
+sms:
+  provider: http            # http (ยิงผ่าน HTTP API) | mock
+  source: easymoney         # ชื่อผู้ส่งที่แนบไป payload
+  endpoint: ${SMS_ENDPOINT} # URL ปลายทาง — ดึงจาก .env ไม่ hardcode
+  rate_per_second: 100      # ปรับตาม provider จริง
+  max_concurrent: 50
+  batch_size: 1
+
+fcm:
+  credentials_file: ./secrets/firebase.json
+  rate_per_second: 500
+  multicast_size: 500
+
+email:
+  provider: smtp            # smtp | sendgrid | azure_communication
+  from: no-reply@example.com
+
+worker:
+  count: 10
+  prefetch: 100
+
+report:
+  dlr_timeout_minutes: 20   # รอ DLR นานสุดก่อนปิด batch แล้วสรุป
