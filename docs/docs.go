@@ -37,7 +37,7 @@ const docTemplate = `{
         },
         "/test-send": {
             "post": {
-                "description": "ยิง SMS จริงผ่าน easymoney adapter (ยังไม่ผ่าน DB/queue) — คืน message_id ที่ provider ตอบกลับ",
+                "description": "ยิง SMS จริงผ่าน service → sender (บันทึกสถานะผ่าน repository) — คืน message_id ที่ provider ตอบกลับ",
                 "consumes": [
                     "application/json"
                 ],
@@ -47,7 +47,7 @@ const docTemplate = `{
                 "tags": [
                     "notifications"
                 ],
-                "summary": "ทดสอบส่ง SMS ผ่าน easymoney",
+                "summary": "ทดสอบส่ง SMS",
                 "parameters": [
                     {
                         "description": "payload",
@@ -173,11 +173,6 @@ const docTemplate = `{
                     "example": [
                         "0806906003"
                     ]
-                },
-                "source": {
-                    "description": "ว่างได้ = ใช้ค่าจาก config",
-                    "type": "string",
-                    "example": "easymoney"
                 }
             }
         },

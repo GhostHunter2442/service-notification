@@ -63,10 +63,6 @@ definitions:
           type: string
         minItems: 1
         type: array
-      source:
-        description: ว่างได้ = ใช้ค่าจาก config
-        example: easymoney
-        type: string
     required:
     - message
     - numbers
@@ -105,8 +101,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: ยิง SMS จริงผ่าน easymoney adapter (ยังไม่ผ่าน DB/queue) — คืน
-        message_id ที่ provider ตอบกลับ
+      description: ยิง SMS จริงผ่าน service → sender (บันทึกสถานะผ่าน repository)
+        — คืน message_id ที่ provider ตอบกลับ
       parameters:
       - description: payload
         in: body
@@ -125,7 +121,7 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/handler.ErrorResponse'
-      summary: ทดสอบส่ง SMS ผ่าน easymoney
+      summary: ทดสอบส่ง SMS
       tags:
       - notifications
 swagger: "2.0"

@@ -1,26 +1,25 @@
 // Package handler รวม HTTP handler ของ API (ชั้น api)
+// หน้าที่: parse/validate request → เรียก service → format response
 package handler
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/GhostHunter2442/service-notification/internal/config"
 	"github.com/GhostHunter2442/service-notification/internal/domain"
-	"github.com/GhostHunter2442/service-notification/internal/sender/sms"
+	"github.com/GhostHunter2442/service-notification/internal/service"
 )
 
 // Handler ถือ dependency ที่ handler ต้องใช้
 type Handler struct {
-	env    string
-	smsCfg config.SMSConfig
+	env string
+	svc *service.Notification
 }
 
 // New สร้าง Handler
-func New(env string, smsCfg config.SMSConfig) *Handler {
-	return &Handler{env: env, smsCfg: smsCfg}
+func New(env string, svc *service.Notification) *Handler {
+	return &Handler{env: env, svc: svc}
 }
 
 // HealthResponse = ผลลัพธ์ health check
@@ -40,10 +39,10 @@ func (h *Handler) Health(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{Status: "ok", Env: h.env})
 }
 
-// TestSendRequest = payload ทดสอบส่ง SMS ผ่าน easymoney (ตรงตาม API จริง)
+// TestSendRequest = payload ทดสอบส่ง SMS
+// source มาจาก config (sms.source) ไม่รับจาก client แล้ว (best practice)
 type TestSendRequest struct {
-	Source  string   `json:"source" example:"easymoney"`                          // ว่างได้ = ใช้ค่าจาก config
-	Message string   `json:"message" binding:"required" example:"ทดสอบ sms"`      // เนื้อความ
+	Message string   `json:"message" binding:"required" example:"ทดสอบ sms"`       // เนื้อความ
 	Numbers []string `json:"numbers" binding:"required,min=1" example:"0806906003"` // เบอร์ปลายทาง
 }
 
@@ -59,8 +58,8 @@ type ErrorResponse struct {
 }
 
 // TestSend godoc
-// @Summary      ทดสอบส่ง SMS ผ่าน easymoney
-// @Description  ยิง SMS จริงผ่าน easymoney adapter (ยังไม่ผ่าน DB/queue) — คืน message_id ที่ provider ตอบกลับ
+// @Summary      ทดสอบส่ง SMS
+// @Description  ยิง SMS จริงผ่าน service → sender (บันทึกสถานะผ่าน repository) — คืน message_id ที่ provider ตอบกลับ
 // @Tags         notifications
 // @Accept       json
 // @Produce      json
@@ -75,12 +74,6 @@ func (h *Handler) TestSend(c *gin.Context) {
 		return
 	}
 
-	source := req.Source
-	if source == "" {
-		source = h.smsCfg.Source
-	}
-	sender := sms.NewHTTPSender(source, h.smsCfg.Endpoint)
-
 	// numbers ทุกเบอร์ใช้ body เดียวกัน → adapter จะ group เป็น 1 call
 	msgs := make([]domain.Message, len(req.Numbers))
 	for i, n := range req.Numbers {
@@ -91,13 +84,13 @@ func (h *Handler) TestSend(c *gin.Context) {
 		}
 	}
 
-	results, err := sender.Send(context.Background(), msgs)
+	results, err := h.svc.SendSMS(c.Request.Context(), msgs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, TestSendResponse{
-		Channel: string(sender.Channel()),
+		Channel: string(domain.ChannelSMS),
 		Results: results,
 	})
 }

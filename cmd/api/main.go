@@ -10,6 +10,9 @@ import (
 	"github.com/GhostHunter2442/service-notification/internal/api"
 	"github.com/GhostHunter2442/service-notification/internal/api/handler"
 	"github.com/GhostHunter2442/service-notification/internal/config"
+	"github.com/GhostHunter2442/service-notification/internal/repository"
+	"github.com/GhostHunter2442/service-notification/internal/sender/sms"
+	"github.com/GhostHunter2442/service-notification/internal/service"
 	"github.com/GhostHunter2442/service-notification/pkg/logger"
 )
 
@@ -37,7 +40,12 @@ func main() {
 		Str("sms_provider", cfg.SMS.Provider).
 		Msg("starting api server")
 
-	h := handler.New(cfg.App.Env, cfg.SMS)
+	// wire dependency: sender + repository -> service -> handler
+	smsSender := sms.NewHTTPSender(cfg.SMS.Source, cfg.SMS.Endpoint)
+	repo := repository.NewMemory() // TODO: เปลี่ยนเป็น Azure SQL repo
+	svc := service.New(smsSender, repo)
+
+	h := handler.New(cfg.App.Env, svc)
 	r := api.NewRouter(h)
 
 	addr := fmt.Sprintf(":%d", cfg.App.HTTPPort)
